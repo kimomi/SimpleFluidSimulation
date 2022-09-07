@@ -1,4 +1,5 @@
 # ref https://lucasschuermann.com/writing/implementing-sph-in-2d
+from unittest import result
 import taichi as ti
 ti.init(arch=ti.gpu)
 
@@ -25,6 +26,9 @@ velocity = ti.Vector.field(2, shape=(NUM_PARTICLES), dtype=ti.f32)
 force = ti.Vector.field(2, shape=(NUM_PARTICLES), dtype=ti.f32)
 density = ti.field(shape=(NUM_PARTICLES), dtype=ti.f32)
 pressure = ti.field(shape=(NUM_PARTICLES), dtype=ti.f32)
+
+# canvas
+show_map = ti.field(shape=(WIDTH, HEIGHT, 3), dtype=ti.f32)
 
 # set water initialize shape
 @ti.kernel
@@ -92,8 +96,30 @@ def update():
             velocity[i][1] *= BOUND_DAMPING
             position[i][1] = HEIGHT - EPS
 
-def render(g : ti.GUI):
-    g.circles(position.to_numpy() / WIDTH, color=0xFFFFFF, radius=4)
+@ti.func
+def circle_sdf(p, o , r):
+    return (p - o).norm() - r
+
+@ti.func
+def smin(d1, d2, k):
+    h = ti.math.max(k-ti.abs(d1-d2),0.0)
+    return min(d1, d2) - h*h*0.25/k
+
+@ti.func
+def scene_sdf(p):
+    result = 1000.0
+    for i in range(NUM_PARTICLES):
+        result = smin(result, circle_sdf(p, position[i], H / 2.0), 50.0)
+    return result
+
+# render in sdf
+@ti.kernel
+def render():
+    for x, y, i in show_map:
+        if scene_sdf(ti.Vector([x, y])) <= 0:
+            show_map[x, y, i] = 1.0 if i == 2 else 0.1
+        else:
+            show_map[x, y, i] = 0.0
 
 gui = ti.GUI("sph", res=(WIDTH, HEIGHT))
 
@@ -107,5 +133,6 @@ while gui.running:
         x, y = gui.get_cursor_pos()
         G[None] = ti.Vector([x * 2 - 1, y * 2 - 1]).normalized() * 9.8
     update()
-    render(gui)
+    render()
+    gui.set_image(show_map)
     gui.show()

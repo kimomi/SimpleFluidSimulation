@@ -1,5 +1,4 @@
 # ref https://lucasschuermann.com/writing/implementing-sph-in-2d
-from unittest import result
 import taichi as ti
 ti.init(arch=ti.gpu)
 
